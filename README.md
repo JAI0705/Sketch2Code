@@ -29,7 +29,7 @@ from huggingface_hub import HfApi, hf_hub_download
 
 def extract_html(code):
     # re.DOTALL allows the dot (.) to match newlines as well
-    matches = re.findall(r'```(.*?)```', code, re.DOTALL)
+    matches = re.findall(r"'''(.*?)'''", code, re.DOTALL)
     if matches:
         return matches[-1]  # Return the last match found
     else:
@@ -109,17 +109,17 @@ files = api.list_repo_files(repo_id, repo_type="dataset")
 sketch_files = [file for file in files if file.startswith('sketches/')][:5]    # running only the first 5 sketches
 
 
-prompt = '''You are an expert web developer who specializes in HTML and CSS. A user will provide you with a sketch design of the webpage following the wireframing conventions, where images are represented as boxes with an "X" inside, and texts are replaced with curly lines. You need to return a single html file that uses HTML and CSS to produce a webpage that strictly follows the sketch layout. Include all CSS code in the HTML file itself. If it involves any images, use "rick.jpg" as the placeholder name. You should try your best to figure out what text should be placed in each text block. In you are unsure, you may use "lorem ipsum..." as the placeholder text. However, you must make sure that the positions and sizes of these placeholder text blocks matches those on the provided sketch.
+prompt = """You are an expert web developer who specializes in HTML and CSS. A user will provide you with a sketch design of the webpage following the wireframing conventions, where images are represented as boxes with an "X" inside, and texts are replaced with curly lines. You need to return a single html file that uses HTML and CSS to produce a webpage that strictly follows the sketch layout. Include all CSS code in the HTML file itself. If it involves any images, use "rick.jpg" as the placeholder name. You should try your best to figure out what text should be placed in each text block. In you are unsure, you may use "lorem ipsum..." as the placeholder text. However, you must make sure that the positions and sizes of these placeholder text blocks matches those on the provided sketch.
 
 Do your best to reason out what each element in the sketch represents and write a HTML file with embedded CSS that implements the design. Do not hallucinate any dependencies to external files. Pay attention to things like size and position of all the elements, as well as the overall layout. You may assume that the page is static and ignore any user interactivity.
 
 Here is a sketch design of a webpage. Could you write a HTML+CSS code of this webpage for me?
 
 Please format your code as
-```
+'''
 {{HTML_CSS_CODE}}
-```
-Remember to use "rick.jpg" as the placeholder for any images'''
+'''
+Remember to use "rick.jpg" as the placeholder for any images"""
 
 model_name = "llava-hf/llama3-llava-next-8b-hf"
 processor = LlavaNextProcessor.from_pretrained(model_name)
