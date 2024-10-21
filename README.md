@@ -13,7 +13,7 @@ Note that all images in these webpages are replaced by a blue placeholder image 
 Please refer to our [Project Page](https://salt-nlp.github.io/Sketch2Code-Project-Page/) for more detailed information.
 
 
-### Example Usage
+## Example Usage
 You can download the full dataset through this [link](https://huggingface.co/datasets/SALT-NLP/Sketch2Code/resolve/main/sketch2code_dataset_v1.zip?download=true). After unzipping, all 731 sketches (`{webpage_id}_{sketch_id}.png`) and 484 webpage screenshots + HTMLs (`{webpage_id}.html` and `{webpage_id}.png`) will be appear flattened under `sketch2code_dataset_v1_cleaned/`. We also include `rick.jpg` which is used to render the image placeholder in the HTML code.
 
 Alternatively, you may access the data online through `huggingface_hub`. Below is a sample script to access the data via `huggingface_hub` and generate predictions using Llava-1.6-8b:
