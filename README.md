@@ -1,150 +1,148 @@
----
-license: odc-by
-tags:
-- code
----
+# Sketch2Code: AI-Powered HTML/CSS Generation from UI Sketches
 
-The Sketch2Code dataset consists of 731 human-drawn sketches paired with 484 real-world webpages from the [Design2Code dataset](https://huggingface.co/datasets/SALT-NLP/Design2Code), serving to benchmark Vision-Language Models (VLMs) on converting rudimentary sketches into web design prototypes.
+This project leverages the CogVLM (Cognitive Vision Language Model) via the OpenRouter API to automatically convert user interface (UI) sketches into functional HTML and CSS code. It provides scripts to process both a pre-existing dataset of sketches and new, user-uploaded images.
 
-Each example consists of a pair of source HTML and rendered webpage screenshot (stored in `webpages/` directory under name `{webpage_id}.html` and `{webpage_id}.png`), as well as 1 to 3 sketches drawn by human annotators (stored in `sketches/` directory under name `{webpage_id}_{sketch_id}.png`).
+## ✨ Features
 
-See the dataset in Huggingface format (here)[https://huggingface.co/datasets/SALT-NLP/Sketch2Code-hf]
+- **AI-Powered Code Generation**: Utilizes a powerful vision-language model to interpret UI sketches and generate corresponding HTML/CSS code.
+- **Two Processing Modes**:
+  - **Dataset Mode (`cogvlm_direct.py`)**: Processes a collection of sketches from the `sketch2code_dataset_v1` dataset, using specific prompts derived from existing HTML metadata.
+  - **User Mode (`cogvlm_user.py`)**: Converts individual sketches uploaded by a user into HTML, using a general-purpose prompt.
+- **Automated Screenshot Generation**: After generating the HTML for a sketch, the project automatically takes a screenshot of the rendered webpage for visual verification.
+- **Utility Scripts**: Includes helper scripts for data preparation and API testing.
 
-Note that all images in these webpages are replaced by a blue placeholder image (rick.jpg).
+## 📂 Project Structure
 
-Please refer to our [Project Page](https://salt-nlp.github.io/Sketch2Code-Project-Page/) for more detailed information.
-
-
-## Example Usage
-You can download the full dataset through this [link](https://huggingface.co/datasets/SALT-NLP/Sketch2Code/resolve/main/sketch2code_dataset_v1.zip?download=true). After unzipping, all 731 sketches (`{webpage_id}_{sketch_id}.png`) and 484 webpage screenshots + HTMLs (`{webpage_id}.html` and `{webpage_id}.png`) will be appear flattened under `sketch2code_dataset_v1_cleaned/`. We also include `rick.jpg` which is used to render the image placeholder in the HTML code.
-
-Alternatively, you may access the data online through `huggingface_hub`. Below is a sample script to access the data via `huggingface_hub` and generate predictions using Llava-1.6-8b:
-``` python
-import os
-import re
-import torch
-
-from PIL import Image
-from tqdm import tqdm
-from transformers import LlavaNextProcessor, LlavaNextForConditionalGeneration
-from huggingface_hub import HfApi, hf_hub_download
-
-def extract_html(code):
-    # re.DOTALL allows the dot (.) to match newlines as well
-    matches = re.findall(r"'''(.*?)'''", code, re.DOTALL)
-    if matches:
-        return matches[-1]  # Return the last match found
-    else:
-        return None
-    
-def cleanup_response(response):
-    if not response:
-        return None
-    if '<!DOCTYPE' not in response and '<html>' not in response:
-        # invalid html, return none
-        return None
-    ## simple post-processing
-    if response[ : 3] == "```":
-        response = response[3 :].strip()
-    if response[-3 : ] == "```":
-        response = response[ : -3].strip()
-    if response[ : 4] == "html":
-        response = response[4 : ].strip()
-
-    ## strip anything before '<!DOCTYPE'
-    if '<!DOCTYPE' in response:
-        response = response.split('<!DOCTYPE', 1)[1]
-        response = '<!DOCTYPE' + response
-		
-    ## strip anything after '</html>'
-    if '</html>' in response:
-        response = response.split('</html>')[0] + '</html>'
-    return response
-
-
-def llava_call(model, processor, user_message, image, history=None):
-    def parse_resp(text_output):
-        idx = text_output.rfind("assistant")
-
-        if idx > -1:
-            return text_output[idx+len("assistant"):].strip()
-        else:
-            return text_output
-    
-    if not history:
-        conversation = [
-            {
-
-            "role": "user",
-            "content": [
-                {"type": "text", "text": user_message},
-                {"type": "image"},
-                ],
-            },
-        ]
-    else:
-        conversation = history
-        conversation.append({
-            "role": "user",
-            "content": [
-                {"type": "text", "text": user_message},
-            ],
-        })
-    prompt = processor.apply_chat_template(conversation, add_generation_prompt=True)
-    inputs = processor(images=image, text=prompt, return_tensors="pt").to(model.device)
-    output = parse_resp(processor.decode(model.generate(**inputs, max_new_tokens=4096, do_sample=True, temperature=0.5, repetition_penalty=1.1)[0], skip_special_tokens=True))
-    
-    conversation.append({
-        "role": "assistant",
-        "content": [
-            {"type": "text", "text": output}
-        ]
-    })
-
-    return output, conversation
-
-
-api = HfApi(token="your_hf_access_token")
-repo_id = "SALT-NLP/Sketch2Code"
-
-files = api.list_repo_files(repo_id, repo_type="dataset")
-sketch_files = [file for file in files if file.startswith('sketches/')][:5]    # running only the first 5 sketches
-
-
-prompt = """You are an expert web developer who specializes in HTML and CSS. A user will provide you with a sketch design of the webpage following the wireframing conventions, where images are represented as boxes with an "X" inside, and texts are replaced with curly lines. You need to return a single html file that uses HTML and CSS to produce a webpage that strictly follows the sketch layout. Include all CSS code in the HTML file itself. If it involves any images, use "rick.jpg" as the placeholder name. You should try your best to figure out what text should be placed in each text block. In you are unsure, you may use "lorem ipsum..." as the placeholder text. However, you must make sure that the positions and sizes of these placeholder text blocks matches those on the provided sketch.
-
-Do your best to reason out what each element in the sketch represents and write a HTML file with embedded CSS that implements the design. Do not hallucinate any dependencies to external files. Pay attention to things like size and position of all the elements, as well as the overall layout. You may assume that the page is static and ignore any user interactivity.
-
-Here is a sketch design of a webpage. Could you write a HTML+CSS code of this webpage for me?
-
-Please format your code as
-'''
-{{HTML_CSS_CODE}}
-'''
-Remember to use "rick.jpg" as the placeholder for any images"""
-
-model_name = "llava-hf/llama3-llava-next-8b-hf"
-processor = LlavaNextProcessor.from_pretrained(model_name)
-model = LlavaNextForConditionalGeneration.from_pretrained(
-    model_name, 
-    device_map="auto", 
-    load_in_8bit=True,
-    torch_dtype=torch.float16
-)
-
-for sketch_file in tqdm(sketch_files):
-    sketch_path = hf_hub_download(repo_id=repo_id, repo_type="dataset", filename=sketch_file)
-    sketch = Image.open(sketch_path)
-    
-    agent_resp, _ = llava_call(model, processor, prompt, sketch)
-    html_response = cleanup_response(extract_html(agent_resp))
-    
-    if not html_response:
-        html_response = "Error: HTML not Generated"
-    
-    output_path = sketch_path.split('/')[-1].replace(".png", ".html")
-    with open(output_path, 'w', encoding='utf-8') as f:
-        f.write(html_response)
-    
-    print(f"Output saved to {output_path}")
 ```
+/
+├── sketch2code_dataset_v1/ # Dataset containing original sketches and webpages
+│   ├── sketches/
+│   └── webpages/
+├── user_uploads/           # Directory for user-provided sketches (input)
+├── output_cogvlm/          # Directory for generated HTML/screenshots from the dataset (output)
+├── user_outputs/           # Directory for generated HTML/screenshots from user uploads (output)
+├── utils/                  # Helper functions for prompts, file handling, and screenshots
+├── cogvlm_direct.py        # Main script for processing the sketch dataset
+├── cogvlm_user.py          # Script for processing user-uploaded sketches
+├── move_images_and_verify.py # Utility to organize the dataset files
+├── API_test.py             # Simple script to test the OpenRouter API connection
+└── venv/                   # Python virtual environment
+```
+
+## 🚀 Getting Started
+
+### 1. Prerequisites
+
+- Python 3.x
+- An API key from [OpenRouter.ai](https://openrouter.ai/)
+
+### 2. Installation & Setup
+
+1.  **Clone the repository:**
+    ```bash
+    git clone <your-repository-url>
+    cd Sketch2Code
+    ```
+
+2.  **Create and activate a virtual environment:**
+    ```bash
+    python -m venv venv
+    source venv/bin/activate
+    ```
+
+3.  **Install the required dependencies:**
+    ```bash
+    pip install requests pillow tqdm
+    ```
+
+4.  **Set up your API key:**
+    The scripts require your OpenRouter API key to be available as an environment variable. 
+    ```bash
+    export OPENROUTER_API_KEY="your-api-key-here"
+    ```
+    *Note: Add this line to your `~/.bashrc` or `~/.zshrc` file to make it permanent.*
+
+### 3. Prepare the Dataset (Optional)
+
+If you are using the `sketch2code_dataset_v1`, you may need to organize the image files. The `move_images_and_verify.py` script is provided for this purpose. It moves all image files from the `webpages` directory to the `sketches` directory and verifies which sketches have a corresponding HTML file.
+
+```bash
+python move_images_and_verify.py
+```
+
+## Workflow Diagram
+
+```mermaid
+graph LR
+    subgraph Dataset Workflow
+        direction LR
+        A[Input: Dataset Sketches] --> B(cogvlm_direct.py);
+        B --> C{Generate Prompt from HTML};
+    end
+
+    subgraph User Workflow
+        direction LR
+        D[Input: User Sketches] --> E(cogvlm_user.py);
+        E --> F{Generate Generic Prompt};
+    end
+
+    subgraph Core Logic
+        direction LR
+        G[Call OpenRouter API] --> H[Receive HTML/CSS];
+        H --> I{Save HTML File};
+        I --> J{Render HTML & Take Screenshot};
+    end
+
+    subgraph Dataset Output
+        direction LR
+        K[Save to output_cogvlm];
+    end
+
+    subgraph User Output
+        direction LR
+        L[Save to user_outputs];
+    end
+
+    C --> G;
+    F --> G;
+    J --> K;
+    J --> L;
+
+    style B fill:#cde4ff,stroke:#333,stroke-width:2px
+    style E fill:#cde4ff,stroke:#333,stroke-width:2px
+```
+
+## Usage
+
+This project offers two primary modes of operation.
+
+### 1. Processing the Sketch2Code Dataset
+
+Use the `cogvlm_direct.py` script to process the included dataset. It reads sketches, generates HTML, and saves the output and a corresponding screenshot to the `output_cogvlm` directory.
+
+```bash
+python cogvlm_direct.py --limit 10
+```
+
+- `--input_dir`: Path to the directory containing sketch images (default: `sketch2code_dataset_v1/sketches`).
+- `--html_dir`: Path to the directory containing original HTML files (default: `sketch2code_dataset_v1/webpages`).
+- `--out_dir`: Path to save the generated files (default: `output_cogvlm`).
+- `--limit`: The maximum number of sketches to process (default: `3`).
+
+### 2. Converting a Custom User Sketch
+
+To convert your own sketch, place your image file (e.g., `my_design.png`) into the `user_uploads` directory and run the `cogvlm_user.py` script.
+
+```bash
+python cogvlm_user.py
+```
+
+- The script will process all `.png` files in the `user_uploads` directory.
+- The generated HTML and screenshot will be saved in the `user_outputs` directory with the same base name as the input file.
+
+## 🛠️ Utilities
+
+- **`API_test.py`**: A simple script to verify that your API key is configured correctly and that you can connect to the OpenRouter API.
+  ```bash
+  python API_test.py
+  ```
