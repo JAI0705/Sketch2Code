@@ -138,7 +138,7 @@ python cogvlm_user.py
 ```
 
 - The script will process all `.png` files in the `user_uploads` directory.
-- The generated HTML and screenshot will be saved in the `user_outputs` directory with the same base name as the input file.
+- The generated HTML and screenshot will be saved in the `user_outputs` directory with the same base name as the input file which will be downloadable.
 
 ## 🛠️ Utilities
 
